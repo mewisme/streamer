@@ -1,0 +1,26 @@
+{
+  "name": "streamer",
+  "version": "1.0.0",
+  "description": "A powerful video streaming library for multiple platforms using Bun, TypeScript, and FFmpeg",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --minify"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "puppeteer-core": "^24.10.0"
+  }
+}
