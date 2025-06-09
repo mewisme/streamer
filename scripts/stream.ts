@@ -3,6 +3,7 @@ import { Logger, Server, YouTubeStream } from "../dist";
 const logger = new Logger("Stream");
 
 const streamKey = Bun.env.YOUTUBE_STREAM_KEY;
+const port = Bun.env.PORT || 7777;
 
 if (!streamKey) {
   logger.error("❌ YOUTUBE_STREAM_KEY is not set");
@@ -17,7 +18,7 @@ const stream = new YouTubeStream({
   audioBitrate: "128k"
 });
 
-const server = new Server(3000);
+const server = new Server({ port: port });
 
 try {
   await server.start();
