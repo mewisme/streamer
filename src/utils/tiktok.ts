@@ -4,7 +4,7 @@ import { Database } from "./database";
 import { Logger } from "./logger";
 import puppeteer from "puppeteer-core";
 
-export class Tiktok {
+export class TiktokCrawler {
   private browser: Browser | null = null;
   private page: Page | null = null;
   private logger = new Logger("Tiktok");
@@ -30,24 +30,6 @@ export class Tiktok {
   async loadPage(username: string) {
     this.username = username;
     await this.page?.goto(`https://www.tiktok.com/@${username}`);
-    await this.page?.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', {
-        get: () => false,
-      });
-      // @ts-ignore
-      window.chrome = {
-        runtime: {},
-      };
-
-      Object.defineProperty(navigator, 'languages', {
-        get: () => ['en-US', 'en'],
-      });
-
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => [1, 2, 3, 4, 5],
-      });
-    });
-
     await this.page?.waitForNetworkIdle({
       timeout: 10000,
       concurrency: 2
@@ -62,11 +44,11 @@ export class Tiktok {
       await this.page?.waitForFunction(() => {
         // @ts-ignore
         const el = document.querySelector('.captcha-verify-container');
-        if (!el) return true; // Nếu bị xoá khỏi DOM thì cũng coi là ẩn
+        if (!el) return true;
         // @ts-ignore
         const style = window.getComputedStyle(el);
         return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
-      }, { timeout: 60000 }); // timeout 60s, bạn có thể điều chỉnh
+      }, { timeout: 60000 });
 
       this.logger.info('Captcha is now hidden!');
     } else {
@@ -90,9 +72,7 @@ export class Tiktok {
     }
 
     while (list.length < end && scrollAttempts < maxScrollAttempts) {
-      // Get current videos
       try {
-        // check if has 'data-e2e="user-post-item-list"'
         const hasDataE2E = await this.page?.$('[data-e2e="user-post-item-list"]');
         if (!hasDataE2E) {
           this.logger.error('No data-e2e="user-post-item-list" found');
@@ -124,7 +104,6 @@ export class Tiktok {
       }
     }
 
-    // Get the videos in the desired range
     const rangedList = list.slice(start, end).filter((url: string) => !Object.keys(this.database.getData()).includes(url));
     this.logger.info(`Returning ${rangedList.length} video URLs (from index ${start} to ${end})`);
     this.listVideoURLs = [...new Set([...this.listVideoURLs, ...rangedList])];
@@ -178,11 +157,11 @@ export class Tiktok {
       await new Promise(resolve => setTimeout(resolve, 100));
       await this.database.updateData(data);
       await new Promise(resolve => setTimeout(resolve, 100));
-      await Promise.race(running); // chờ một cái hoàn tất trước khi thêm cái khác
+      await Promise.race(running);
       removedUrls = [];
     }
 
-    await Promise.all(running); // chờ tất cả hoàn tất
+    await Promise.all(running);
     this.logger.info("🔍 Get video stream URLs successfully");
   }
 

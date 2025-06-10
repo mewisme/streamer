@@ -9,6 +9,7 @@ export interface StreamConfig {
   audioBitrate?: string;
   videoCodec?: string;
   audioCodec?: string;
+  useCRF?: boolean;
 }
 
 export interface StreamStatus {
@@ -48,7 +49,8 @@ export abstract class BaseStream {
     videoBitrate: "2500k",
     audioBitrate: "128k",
     videoCodec: "libx264",
-    audioCodec: "aac"
+    audioCodec: "aac",
+    useCRF: false
   };
 
   constructor(config: Partial<StreamConfig> = {}) {
@@ -328,9 +330,12 @@ export abstract class BaseStream {
    * Build optimized FFmpeg command
    */
   private buildFFmpegCommand(inputFile: string): string[] {
+    // Use more verbose logging in debug mode
+    const logLevel = this.logger.getLevel() === 'debug' ? 'info' : 'warning';
+
     const preInputArgs: string[] = [
       "-hide_banner",
-      "-loglevel", "warning",
+      "-loglevel", logLevel,
       "-re"
     ];
 
@@ -347,18 +352,32 @@ export abstract class BaseStream {
       "-i", inputFile
     ];
 
-    const postInputArgs = [
+    const bitrateArgs = [
       "-c:v", this.config.videoCodec,
       "-c:a", this.config.audioCodec,
-      "-b:v", this.config.videoBitrate,
       "-b:a", this.config.audioBitrate,
+    ]
+
+    if (this.config.useCRF) {
+      bitrateArgs.push(
+        "-crf",
+        "25"
+      )
+    } else {
+      bitrateArgs.push(
+        "-b:v",
+        this.config.videoBitrate,
+      )
+    }
+
+    const postInputArgs = [
       "-s", this.config.resolution,
       "-r", this.config.framerate.toString(),
       "-g", Math.floor(this.config.framerate * 2).toString(),
       "-keyint_min", Math.floor(this.config.framerate).toString(),
       "-sc_threshold", "0",
       "-pix_fmt", "yuv420p",
-      "-preset", "medium",
+      "-preset", "ultrafast",
       "-tune", "zerolatency",
       "-threads", "0",
       "-flvflags", "no_duration_filesize",
@@ -366,7 +385,7 @@ export abstract class BaseStream {
       ...this.getStreamArgs()
     ];
 
-    return [...preInputArgs, ...inputArgs, ...postInputArgs];
+    return [...preInputArgs, ...inputArgs, ...bitrateArgs, ...postInputArgs];
   }
 
   /**
@@ -384,15 +403,26 @@ export abstract class BaseStream {
 
     const ffmpegArgs = this.buildFFmpegCommand(videoPath);
 
+    // Debug log the full FFmpeg command
+    this.logger.debug(`🐛 FFmpeg spawn command: ffmpeg ${ffmpegArgs.join(' ')}`);
+
     try {
+      this.logger.debug('🐛 Spawning FFmpeg process...');
       this.currentStreamProcess = Bun.spawn(["ffmpeg", ...ffmpegArgs], {
         stdio: ["ignore", "pipe", "pipe"]
       });
+
+      this.logger.debug(`🐛 FFmpeg process spawned with PID: ${this.currentStreamProcess.pid}`);
+      this.logger.debug(`🐛 Process stdout type: ${typeof this.currentStreamProcess.stdout}`);
+      this.logger.debug(`🐛 Process stderr type: ${typeof this.currentStreamProcess.stderr}`);
+      this.logger.debug(`🐛 Process stdout exists: ${this.currentStreamProcess.stdout !== null}`);
+      this.logger.debug(`🐛 Process stderr exists: ${this.currentStreamProcess.stderr !== null}`);
 
       await this.handleStreamProcess(isPlaceholder, videoPath);
 
     } catch (error) {
       this.logger.error('❌ Failed to start FFmpeg:', error);
+      this.logger.debug(`🐛 FFmpeg spawn error details: ${error}`);
       await this.handleStreamError();
     }
   }
@@ -401,35 +431,60 @@ export abstract class BaseStream {
    * Handle stream process lifecycle
    */
   private async handleStreamProcess(isPlaceholder: boolean, videoPath: string): Promise<void> {
-    if (!this.currentStreamProcess) return;
+    if (!this.currentStreamProcess) {
+      this.logger.debug('🐛 No current stream process to handle');
+      return;
+    }
+
+    this.logger.debug('🐛 Setting up FFmpeg process stream handlers...');
+    this.logger.debug(`🐛 Process has stdout: ${!!this.currentStreamProcess.stdout}`);
+    this.logger.debug(`🐛 Process has stderr: ${!!this.currentStreamProcess.stderr}`);
 
     // Handle stdout and stderr
     if (this.currentStreamProcess.stdout) {
-      this.readStreamOutput(this.currentStreamProcess.stdout.getReader(), "stdout");
+      this.logger.debug('🐛 Setting up stdout reader...');
+      // Don't await this - let it run in background
+      this.readStreamOutput(this.currentStreamProcess.stdout.getReader(), "stdout").catch(err => {
+        this.logger.debug(`🐛 stdout reader error: ${err}`);
+      });
+    } else {
+      this.logger.debug('🐛 No stdout stream available');
     }
 
     if (this.currentStreamProcess.stderr) {
-      this.readStreamOutput(this.currentStreamProcess.stderr.getReader(), "stderr");
+      this.logger.debug('🐛 Setting up stderr reader...');
+      // Don't await this - let it run in background
+      this.readStreamOutput(this.currentStreamProcess.stderr.getReader(), "stderr").catch(err => {
+        this.logger.debug(`🐛 stderr reader error: ${err}`);
+      });
+    } else {
+      this.logger.debug('🐛 No stderr stream available');
     }
 
     // Handle process completion
     try {
       const exitCode = await this.currentStreamProcess.exited;
+      this.logger.debug(`🐛 FFmpeg process exited with code: ${exitCode}`);
 
       if (this.isActive) {
         if (exitCode === 0 || exitCode === 255) { // 255 is normal for terminated FFmpeg
           if (!isPlaceholder) {
             this.logger.info(`✅ Finished streaming: ${videoPath}`);
           }
+          this.logger.debug(`🐛 Stream completed successfully (exit code: ${exitCode})`);
           this.retryCount = 0; // Reset retry count on success
           await this.streamNext();
         } else {
           this.logger.error(`❌ FFmpeg error (exit code: ${exitCode})`);
+          this.logger.debug(`🐛 FFmpeg failed with unexpected exit code: ${exitCode}`);
           await this.handleStreamError();
         }
+      } else {
+        this.logger.debug('🐛 Stream is inactive, not proceeding with next video');
       }
     } catch (error) {
       this.logger.error('Error waiting for process exit:', error);
+      this.logger.debug(`🐛 Process exit error details: ${error}`);
       await this.handleStreamError();
     }
   }
@@ -457,13 +512,26 @@ export abstract class BaseStream {
     reader: ReadableStreamDefaultReader<Uint8Array>,
     streamType: "stdout" | "stderr"
   ): Promise<void> {
+    this.logger.debug(`🐛 Starting to read ${streamType} stream...`);
+
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          this.logger.debug(`🐛 ${streamType} stream ended (done=true)`);
+          break;
+        }
+
+        if (!value || value.length === 0) {
+          this.logger.debug(`🐛 ${streamType} received empty value`);
+          continue;
+        }
 
         const text = new TextDecoder().decode(value).trim();
-        if (!text) continue;
+
+        if (!text) {
+          continue;
+        }
 
         const lines = text.split('\n').filter(line => line.trim());
 
@@ -474,12 +542,14 @@ export abstract class BaseStream {
     } catch (error) {
       if (this.isActive) {
         this.logger.error(`Error reading ${streamType}:`, error);
+        this.logger.debug(`🐛 ${streamType} read error details: ${error}`);
       }
     } finally {
       try {
         reader.releaseLock();
+        this.logger.debug(`🐛 ${streamType} reader released`);
       } catch {
-        // Reader may already be released
+        this.logger.debug(`🐛 ${streamType} reader was already released`);
       }
     }
   }
@@ -489,16 +559,8 @@ export abstract class BaseStream {
    */
   private processFFmpegOutput(line: string, streamType: "stdout" | "stderr"): void {
     const lowercaseLine = line.toLowerCase();
-
-    if (lowercaseLine.includes('error') || lowercaseLine.includes('failed')) {
-      this.logger.error(`[FFmpeg] ${line}`);
-    } else if (lowercaseLine.includes('warning') || lowercaseLine.includes('deprecated')) {
-      this.logger.warn(`[FFmpeg] ${line}`);
-    } else if (lowercaseLine.includes('frame=') || lowercaseLine.includes('fps=')) {
-      this.logger.debug(`[FFmpeg] ${line}`);
-    } else if (streamType === "stderr" && line.trim()) {
-      this.logger.info(`[FFmpeg] ${line}`);
-    }
+    // Debug log ALL FFmpeg output to see what we're receiving
+    this.logger.debug(`🐛 [FFmpeg-${streamType}] ${lowercaseLine}`);
   }
 
   /**
@@ -506,9 +568,6 @@ export abstract class BaseStream {
    */
   private async streamNext(): Promise<void> {
     if (!this.isActive) return;
-
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     const nextVideo = this.getNextVideo();
     await this.streamVideo(nextVideo);
   }
@@ -616,4 +675,4 @@ export abstract class BaseStream {
     this.validateConfig();
     this.logger.info('⚙️ Configuration updated (restart required)');
   }
-} 
+}

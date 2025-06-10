@@ -23,6 +23,8 @@ export type { CustomRTMPConfig } from "./platforms/CustomRTMPStream.js";
 
 // Utilities
 export { Logger } from "./utils/logger.js";
+export { Database } from "./utils/database.js";
+export type { DatabaseEntry, DatabaseData } from "./utils/database.js";
 
 // Server
 export { Server } from "./server.js";

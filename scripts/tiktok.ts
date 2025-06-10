@@ -1,5 +1,5 @@
 import { Logger } from "../src/utils/logger.js";
-import { Tiktok } from "../src/utils/tiktok.js";
+import { TiktokCrawler } from "../src/utils/tiktok.js";
 
 const logger = new Logger("Tiktok");
 
@@ -23,7 +23,7 @@ const usernames: string[] = [
 ]
 
 try {
-  const tiktok = new Tiktok();
+  const tiktok = new TiktokCrawler();
   await tiktok.init();
   for (let i of usernames) {
     await tiktok.loadPage(i);

@@ -23,13 +23,24 @@ export class Logger {
 
   constructor(label: string, config: LoggerConfig = {}) {
     this.label = label;
+
+    const defaultLevel = Bun.env.DEBUG === "true" ? 'debug' : 'info';
+
     this.config = {
-      level: config.level || (Bun.env.LOG_LEVEL as LogLevel) || 'info',
+      level: config.level || (Bun.env.LOG_LEVEL as LogLevel) || defaultLevel,
       useColors: config.useColors ?? true,
       timestamp: config.timestamp ?? true,
     };
 
     this.currentLevel = this.levels[this.config.level].priority;
+
+    // Log debug mode status if debug is enabled
+    if (this.config.level === 'debug') {
+      // Use console.log directly to avoid infinite recursion
+      const timestamp = new Date().toISOString();
+      const message = `[${timestamp}] [${this.label}] ${chalk.blue('DBG')} 🐛 Debug logging enabled (level: ${this.config.level})`;
+      console.log(message);
+    }
   }
 
   private shouldLog(level: LogLevel): boolean {

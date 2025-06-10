@@ -12,10 +12,10 @@ if (!streamKey) {
 
 const stream = new YouTubeStream({
   streamKey: streamKey,
-  resolution: "1080x1920",
+  resolution: "720x1280",
   framerate: 30,
-  videoBitrate: "3000k",
-  audioBitrate: "128k"
+  audioBitrate: "64k",
+  useCRF: true
 });
 
 const server = new Server({ port: port });
@@ -24,7 +24,6 @@ try {
   await server.start();
   server.addStream("youtube", stream);
 } catch (error) {
-  console.log(error);
   logger.error("❌ Server failed:", error);
   process.exit(1);
 }

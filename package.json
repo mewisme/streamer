@@ -1,13 +1,18 @@
 {
   "name": "streamer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A powerful video streaming library for multiple platforms using Bun, TypeScript, and FFmpeg",
-  "main": "src/index.ts",
   "module": "src/index.ts",
   "type": "module",
-  "private": true,
+  "author": "mewisme",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mewisme/streamer.git"
+  },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --minify"
+    "build": "bun build src/index.ts --outdir dist --target bun --minify",
+    "build:crawler": "bun build src/utils/tiktok.ts --outdir dist/utils --target bun --minify"
   },
   "devDependencies": {
     "@types/bun": "latest",
